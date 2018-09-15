@@ -8,8 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"./server"
 	"github.com/ngaut/log"
-	"github.com/ngaut/tso/tso-server/server"
 )
 
 var (

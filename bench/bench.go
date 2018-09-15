@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"../client"
 	"github.com/ngaut/log"
-	"github.com/ngaut/tso/client"
 )
 
 var serverAddress = flag.String("serveraddr", "localhost:1234", "server address")
