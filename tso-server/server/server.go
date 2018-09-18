@@ -59,6 +59,7 @@ type TimestampOracle struct {
 	connLock sync.Mutex
 	conns    map[net.Conn]struct{}
 
+  // tso 为何会用到zookeeper?
 	zkElector *zkhelper.ZElector
 	zkConn    zkhelper.Conn
 
@@ -207,6 +208,7 @@ type session struct {
 // NewTimestampOracle creates a tso server with special config.
 func NewTimestampOracle(cfg *Config) (*TimestampOracle, error) {
 	if cfg.SaveInterval <= 0 {
+	  // 默认是2000ms
 		cfg.SaveInterval = defaultSaveInterval
 	}
 
@@ -216,6 +218,7 @@ func NewTimestampOracle(cfg *Config) (*TimestampOracle, error) {
 	}
 
 	var err error
+	// 创建tso server的socket，监听端口
 	tso.listener, err = net.Listen("tcp", cfg.Addr)
 	if err != nil {
 		return nil, errors.Trace(err)
@@ -231,6 +234,7 @@ func NewTimestampOracle(cfg *Config) (*TimestampOracle, error) {
 		}
 	}
 
+  // 初始化连接池？
 	tso.conns = map[net.Conn]struct{}{}
 
 	return tso, nil
@@ -268,6 +272,8 @@ func (t *tsoTask) Run() error {
 
 	atomic.StoreInt64(&tso.isLeader, 1)
 
+	// 创建一个10ms执行一次的打点器
+	// ticker是一个定时触发的计时器，它会以一个间隔(interval)往Channel发送一个事件(当前时间)，而Channel的接收者可以以固定的时间间隔从Channel中读取事件。
 	tsTicker := time.NewTicker(time.Duration(updateTimestampStep) * time.Millisecond)
 
 	defer func() {
@@ -280,6 +286,8 @@ func (t *tsoTask) Run() error {
 		log.Debugf("tso leader %s task end", tso)
 	}()
 
+  // select是Go中的一个控制结构，类似于用于通信的switch语句。每个case必须是一个通信操作，要么是发送要么是接收。
+  // select随机执行一个可运行的case。如果没有case可运行，它将阻塞，直到有case可运行。一个默认的子句应该总是可运行的。
 	for {
 		select {
 		case err := <-t.interruptCh:
@@ -335,13 +343,15 @@ func (t *tsoTask) Listening() {
 
 	defer tso.wg.Done()
 
+  // 开启循环，不断接收用户的请求
 	for {
 		conn, err := tso.listener.Accept()
 		if err != nil {
 			t.interruptCh <- errors.Trace(err)
 			return
 		}
-
+    
+    // 利用互斥锁访问临界区代码
 		t.connLock.Lock()
 		if !tso.IsLeader() {
 			t.connLock.Unlock()
@@ -351,6 +361,7 @@ func (t *tsoTask) Listening() {
 			continue
 		}
 
+		// 将建立后的连接放入通道内，通道大小为maxConnChanSize，从通道取出连接后可以对连接进行处理
 		t.connCh <- conn
 		t.connLock.Unlock()
 	}
@@ -372,10 +383,13 @@ func (tso *TimestampOracle) Run() error {
 	if err != nil {
 		return errors.Trace(err)
 	}
+	// 选取leader
 	tso.zkElector = &ze
 
+  // 创建一个tsoTask，类似于Java Runnable，由TSO集群中获取leader的节点执行该任务
 	task := &tsoTask{
 		tso:         tso,
+		// 将 连接资源 定义为一个 有缓冲的通道，通道大小为maxConnChanSize，默认为100000
 		connCh:      make(chan net.Conn, maxConnChanSize),
 		interruptCh: make(chan error, 1),
 		stopCh:      make(chan struct{}, 1),
@@ -383,8 +397,10 @@ func (tso *TimestampOracle) Run() error {
 	}
 
 	tso.wg.Add(1)
+	// 在Listenning中建立与请求的连接，连接池最大为maxConnChanSize
 	go task.Listening()
 
+  // 调用task的Run方法？相当于java的Runnable？
 	err = tso.zkElector.RunTask(task)
 	return errors.Trace(err)
 }

@@ -32,13 +32,18 @@ func main() {
 		SaveInterval: *interval,
 	}
 
+  // create a timestamp oracle
+  // timestamp oracle includes : a server socket , listenning on cfg.addr
+  //                             empty connection pool
 	oracle, err := server.NewTimestampOracle(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+  // start a http web ?
 	go http.ListenAndServe(":5555", nil)
 
+  // create a non-buffered channel to store system interrupted
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc,
 		syscall.SIGHUP,
@@ -47,6 +52,8 @@ func main() {
 		syscall.SIGQUIT)
 
 	go func() {
+	  // this goroutine will block
+	  // if system interrupted occur,this goroutine will shutdown the tso
 		sig := <-sc
 		log.Infof("Got signal [%d] to exit.", sig)
 		oracle.Close()
